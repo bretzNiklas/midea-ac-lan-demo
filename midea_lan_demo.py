@@ -4,19 +4,14 @@ import argparse
 import asyncio
 import json
 import os
-from pathlib import Path
 from typing import Any
 
-from msmart.base_device import Device
-from msmart.const import DeviceType
 from msmart.discover import Discover
 from msmart.device import AirConditioner as AC
-from msmart.lan import AuthenticationError
+from msmart.lan import AuthenticationError, ProtocolError
 
 
 DEFAULT_HOST = ""
-DEFAULT_DEVICE_ID = ""
-DEFAULT_STATE_FILE = Path("controller_state.json")
 PERSONAL_FIELDS = {"id", "ip", "name", "sn", "token", "key"}
 
 
@@ -24,61 +19,18 @@ def env(name: str) -> str | None:
     return os.environ.get(name) or None
 
 
-def load_cached_credentials(state_file: Path, host: str) -> dict[str, Any] | None:
-    if not state_file.exists():
-        return None
-
-    state = json.loads(state_file.read_text(encoding="utf-8"))
-    cached = state.get("midea") or {}
-    if host and cached.get("host") != host:
-        return None
-    if not (cached.get("id") and cached.get("token") and cached.get("key")):
-        return None
-    return cached
-
-
-def load_env_credentials(host: str) -> dict[str, Any] | None:
-    device_id = env("MIDEA_DEVICE_ID") or DEFAULT_DEVICE_ID
-    token = env("MIDEA_TOKEN")
-    key = env("MIDEA_KEY")
-
-    if not (host and device_id and token and key):
-        return None
-
-    return {
-        "host": host,
-        "port": 6444,
-        "id": int(device_id),
-        "token": token,
-        "key": key,
-    }
-
-
-async def connect_ac(host: str, state_file: Path) -> AC:
-    credentials = load_cached_credentials(state_file, host) or load_env_credentials(host)
-    if credentials:
-        host = str(credentials["host"])
-        device = Device.construct(
-            type=DeviceType.AIR_CONDITIONER,
-            ip=host,
-            port=int(credentials.get("port", 6444)),
-            device_id=int(credentials["id"]),
-        )
-        if not isinstance(device, AC):
-            raise RuntimeError(f"Device at {host} is not an air conditioner")
-        await device.authenticate(credentials["token"], credentials["key"])
-        await device.refresh()
-        return device
-
+async def connect_ac(host: str) -> AC:
     if not host:
-        raise RuntimeError("Set --host or MIDEA_HOST, or provide a controller_state.json cache.")
+        raise RuntimeError("Set --host or MIDEA_HOST.")
 
     try:
+        # Same path used by the larger controller and msmart-ng CLI auto mode.
+        # msmart-ng discovers the device, gets the LAN token/key through its
+        # built-in generic NetHomePlus cloud flow, authenticates, then refreshes.
         device = await Discover.discover_single(host)
-    except AuthenticationError as exc:
+    except (AuthenticationError, ProtocolError) as exc:
         raise RuntimeError(
-            "No valid local token/key found. Set MIDEA_DEVICE_ID, MIDEA_TOKEN, "
-            "and MIDEA_KEY, or run the full controller once so it can cache them."
+            "Generic msmart-ng discovery/authentication failed for this host."
         ) from exc
 
     if device is None:
@@ -111,12 +63,11 @@ async def main() -> int:
     )
     parser.add_argument("action", choices=["status", "cool", "off"])
     parser.add_argument("--host", default=env("MIDEA_HOST") or DEFAULT_HOST)
-    parser.add_argument("--state-file", type=Path, default=DEFAULT_STATE_FILE)
     parser.add_argument("--target-c", type=float, default=22.0)
     parser.add_argument("--fan", default="LOW", help="Example: SILENT, LOW, MEDIUM, HIGH, AUTO")
     args = parser.parse_args()
 
-    ac = await connect_ac(args.host, args.state_file)
+    ac = await connect_ac(args.host)
     before = redact(ac.to_dict())
 
     if args.action == "cool":

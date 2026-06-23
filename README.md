@@ -2,6 +2,8 @@
 
 Minimal Python demo for controlling a Midea-compatible AC over LAN with `msmart-ng`.
 
+It uses the same generic `msmart-ng` discovery/authentication path as the larger controller: `msmart-ng` discovers the device, fetches the per-device LAN token/key through its built-in generic NetHomePlus cloud flow, authenticates locally, then sends commands over LAN.
+
 The script supports three actions:
 
 ```powershell
@@ -21,13 +23,10 @@ python -m venv .venv
 
 ## Configure
 
-Set your local values before running commands:
+Set your AC LAN host before running commands:
 
 ```powershell
 $env:MIDEA_HOST = ""
-$env:MIDEA_DEVICE_ID = ""
-$env:MIDEA_TOKEN = ""
-$env:MIDEA_KEY = ""
 ```
 
 The script also supports:
@@ -35,8 +34,6 @@ The script also supports:
 ```powershell
 python .\midea_lan_demo.py status --host ""
 ```
-
-If `controller_state.json` exists, the script can read cached local credentials from it. Keep that file local only.
 
 ## Privacy
 
