@@ -1,0 +1,5 @@
+__pycache__/
+.venv/
+controller_state.json
+controller_state.json.tmp
+*.pyc
